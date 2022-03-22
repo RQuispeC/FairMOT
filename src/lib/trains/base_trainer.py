@@ -25,7 +25,7 @@ class BaseTrainer(object):
     self, opt, model, optimizer=None):
     self.opt = opt
     self.optimizer = optimizer
-    self.loss_stats, self.loss = self._get_losses(opt)
+    self.loss_states, self.loss = self._get_losses(opt)
     self.model_with_loss = ModleWithLoss(model, self.loss)
     self.optimizer.add_param_group({'params': self.loss.parameters()})
 
@@ -55,7 +55,7 @@ class BaseTrainer(object):
     opt = self.opt
     results = {}
     data_time, batch_time = AverageMeter(), AverageMeter()
-    avg_loss_stats = {l: AverageMeter() for l in self.loss_stats}
+    avg_loss_stats = {l: AverageMeter() for l in self.loss_states}
     num_iters = len(data_loader) if opt.num_iters < 0 else opt.num_iters
     bar = Bar('{}/{}'.format(opt.task, opt.exp_id), max=num_iters)
     end = time.time()

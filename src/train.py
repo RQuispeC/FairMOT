@@ -5,6 +5,7 @@ from __future__ import print_function
 import _init_paths
 
 import os
+import os.path as osp
 
 import json
 import torch
@@ -24,11 +25,8 @@ def main(opt):
 
     print('Setting up data...')
     Dataset = get_dataset(opt.dataset, opt.task)
-    f = open(opt.data_cfg)
-    data_config = json.load(f)
-    trainset_paths = data_config['train']
-    dataset_root = data_config['root']
-    f.close()
+    trainset_paths = json.load(open(opt.data_cfg))['train']
+    dataset_root = opt.data_root_dir
     transforms = T.Compose([T.ToTensor()])
     dataset = Dataset(opt, dataset_root, trainset_paths, (1088, 608), augment=True, transforms=transforms)
     opt = opts().update_dataset_info_and_set_heads(opt, dataset)

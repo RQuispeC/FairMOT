@@ -48,6 +48,7 @@ conda install pytorch==1.7.0 torchvision==0.8.0 cudatoolkit=10.2 -c pytorch
 cd ${FAIRMOT_ROOT}
 pip install cython
 pip install -r requirements.txt
+pip install dataclasses future
 ```
 * We use [DCNv2_pytorch_1.7](https://github.com/ifzhang/DCNv2/tree/pytorch_1.7) in our backbone network (pytorch_1.7 branch). Previous versions can be found in [DCNv2](https://github.com/CharlesShang/DCNv2).
 ```

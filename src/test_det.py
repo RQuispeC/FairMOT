@@ -57,13 +57,9 @@ def test_det(
         iou_thres=0.5,
         print_interval=40,
 ):
-    data_cfg = opt.data_cfg
-    f = open(data_cfg)
-    data_cfg_dict = json.load(f)
-    f.close()
     nC = 1
-    test_path = data_cfg_dict['test']
-    dataset_root = data_cfg_dict['root']
+    test_paths = opt.data_txt_path_test
+    dataset_root = opt.data_root_dir
     if opt.gpus[0] >= 0:
         opt.device = torch.device('cuda')
     else:
@@ -77,7 +73,7 @@ def test_det(
 
     # Get dataloader
     transforms = T.Compose([T.ToTensor()])
-    dataset = DetDataset(dataset_root, test_path, img_size, augment=False, transforms=transforms)
+    dataset = DetDataset(dataset_root, test_paths, img_size, augment=False, transforms=transforms)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False,
                                              num_workers=8, drop_last=False, collate_fn=collate_fn)
     mean_mAP, mean_R, mean_P, seen = 0.0, 0.0, 0.0, 0

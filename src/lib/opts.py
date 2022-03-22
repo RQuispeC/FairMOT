@@ -121,11 +121,10 @@ class opts(object):
     self.parser.add_argument('--output-root', type=str, default='../demos', help='expected output root path')
 
     # mot
+    self.parser.add_argument('--data_root_dir', type=str, default='/home/zyf/dataset', help='root path for all data')
     self.parser.add_argument('--data_cfg', type=str,
-                             default='../src/lib/cfg/data.json',
-                             help='load data from cfg')
-    self.parser.add_argument('--data_dir', type=str, default='/home/zyf/dataset')
-
+                          default='../src/lib/cfg/data.json',
+                          help='load data from cfg (only train/test splits)')
     # loss
     self.parser.add_argument('--mse_loss', action='store_true',
                              help='use mse loss or focal loss to train '
