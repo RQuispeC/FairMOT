@@ -45,6 +45,7 @@ class opts(object):
                              help='main metric to save best model')
     self.parser.add_argument('--vis_thresh', type=float, default=0.5,
                              help='visualization threshold.')
+    self.parser.add_argument('--save_dir', type=str, default='exp/', help='path where all output is stored')
     
     # model
     self.parser.add_argument('--arch', default='dla_34', 
@@ -58,6 +59,8 @@ class opts(object):
                                   '256 for resnets and 256 for dla.')
     self.parser.add_argument('--down_ratio', type=int, default=4,
                              help='output stride. Currently only supports 4.')
+    self.parser.add_argument('--load_on_generator', action='store_true',
+                             help='load checkpoint defined by `load_model` on model.generator (this is used when pretrained without adversarial)')
 
     # input
     self.parser.add_argument('--input_res', type=int, default=-1, 
@@ -138,6 +141,8 @@ class opts(object):
                              help='loss weight for keypoint local offsets.')
     self.parser.add_argument('--wh_weight', type=float, default=0.1,
                              help='loss weight for bounding box size.')
+    self.parser.add_argument('--adv_weight', type=float, default=1.0,
+                             help='weight for adversarial loss.')
     self.parser.add_argument('--id_loss', default='ce',
                              help='reid loss: ce | focal')
     self.parser.add_argument('--id_weight', type=float, default=1,
@@ -192,8 +197,6 @@ class opts(object):
     print('training chunk_sizes:', opt.chunk_sizes)
 
     opt.root_dir = os.path.join(os.path.dirname(__file__), '..', '..')
-    opt.exp_dir = os.path.join(opt.root_dir, 'exp', opt.task)
-    opt.save_dir = os.path.join(opt.exp_dir, opt.exp_id)
     opt.debug_dir = os.path.join(opt.save_dir, 'debug')
     print('The output will be saved to ', opt.save_dir)
     
@@ -218,7 +221,7 @@ class opts(object):
     opt.input_res = max(opt.input_h, opt.input_w)
     opt.output_res = max(opt.output_h, opt.output_w)
 
-    if opt.task == 'mot':
+    if opt.task == 'mot' or opt.task == 'mot_gan':
       opt.heads = {'hm': opt.num_classes,
                    'wh': 2 if not opt.ltrb else 4,
                    'id': opt.reid_dim}

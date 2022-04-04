@@ -12,12 +12,11 @@ import torch
 import torch.utils.data
 from torchvision.transforms import transforms as T
 from opts import opts
-from models.model import create_model, load_model, save_model
+from models.model import create_model, load_gan_model, save_gan_model
 from models.data_parallel import DataParallel
 from logger import Logger
 from datasets.dataset_factory import get_dataset
 from trains.train_factory import train_factory
-
 
 def main(opt):
     torch.manual_seed(opt.seed)
@@ -39,7 +38,6 @@ def main(opt):
 
     print('Creating model...')
     model = create_model(opt.arch, opt.heads, opt.head_conv)
-    optimizer = torch.optim.Adam(model.parameters(), opt.lr)
     start_epoch = 0
 
     # Get dataloader
@@ -55,12 +53,13 @@ def main(opt):
 
     print('Starting training...')
     Trainer = train_factory[opt.task]
-    trainer = Trainer(opt, model, optimizer, logger)
+    trainer = Trainer(opt, model, logger)
+    optimizers = trainer.optimizers
     trainer.set_device(opt.gpus, opt.chunk_sizes, opt.device)
 
     if opt.load_model != '':
-        model, optimizer, start_epoch = load_model(
-            model, opt.load_model, trainer.optimizer, opt.resume, opt.lr, opt.lr_step)
+        model, optimizers, start_epoch = load_gan_model(
+            model, opt.load_model, optimizers, opt.resume, opt.lr, opt.lr_step, opt.load_on_generator)
 
     for epoch in range(start_epoch + 1, opt.num_epochs + 1):
         mark = epoch if opt.save_all else 'last'
@@ -71,22 +70,23 @@ def main(opt):
             logger.write('{} {:8f} | '.format(k, v))
 
         if opt.val_intervals > 0 and epoch % opt.val_intervals == 0:
-            save_model(os.path.join(opt.save_dir, 'model_{}.pth'.format(mark)),
-                       epoch, model, optimizer)
+            save_gan_model(os.path.join(opt.save_dir, 'model_{}.pth'.format(mark)),
+                       epoch, model, optimizers)
         else:
-            save_model(os.path.join(opt.save_dir, 'model_last.pth'),
-                       epoch, model, optimizer)
+            save_gan_model(os.path.join(opt.save_dir, 'model_last.pth'),
+                       epoch, model, optimizers)
         logger.write('\n')
         if epoch in opt.lr_step:
-            save_model(os.path.join(opt.save_dir, 'model_{}.pth'.format(epoch)),
-                       epoch, model, optimizer)
+            save_gan_model(os.path.join(opt.save_dir, 'model_{}.pth'.format(epoch)),
+                       epoch, model, optimizers)
             lr = opt.lr * (0.1 ** (opt.lr_step.index(epoch) + 1))
             print('Drop LR to', lr)
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = lr
+            for optimizer in optimizers:
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = lr
         if epoch % 5 == 0 or epoch >= 25:
-            save_model(os.path.join(opt.save_dir, 'model_{}.pth'.format(epoch)),
-                       epoch, model, optimizer)
+            save_gan_model(os.path.join(opt.save_dir, 'model_{}.pth'.format(epoch)),
+                       epoch, model, optimizers)
     logger.close()
 
 

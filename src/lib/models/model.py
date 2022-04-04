@@ -10,6 +10,7 @@ import os
 from .networks.dlav0 import get_pose_net as get_dlav0
 from .networks.pose_dla_dcn import get_pose_net as get_dla_dcn
 from .networks.pose_dla_dcn_2 import get_pose_net as get_dla_dcn_2
+from .networks.pose_dla_dcn_2_gan import get_pose_net as get_dla_dcn_2_gan
 from .networks.resnet_dcn import get_pose_net as get_pose_net_dcn
 from .networks.resnet_fpn_dcn import get_pose_net as get_pose_net_fpn_dcn
 from .networks.pose_hrnet import get_pose_net as get_pose_net_hrnet
@@ -20,6 +21,7 @@ _model_factory = {
   'dlav0': get_dlav0, # default DLAup
   'dla': get_dla_dcn,
   'dla2': get_dla_dcn_2,
+  'dla2gan': get_dla_dcn_2_gan,
   'dlaconv': get_dla_conv,
   'resdcn': get_pose_net_dcn,
   'resfpndcn': get_pose_net_fpn_dcn,
@@ -100,3 +102,82 @@ def save_model(path, epoch, model, optimizer=None):
     data['optimizer'] = optimizer.state_dict()
   torch.save(data, path)
 
+# save and load for gan assume multiple optimizers
+
+def load_gan_model(model, model_path, optimizers, resume=False, 
+               lr=None, lr_step=None, load_on_generator=False):
+  start_epoch = 0
+  checkpoint = torch.load(model_path, map_location=lambda storage, loc: storage)
+  print('loaded {}, epoch {}'.format(model_path, checkpoint['epoch']))
+  state_dict_ = checkpoint['state_dict']
+  state_dict = {}
+  
+  # convert data_parallal to model
+  for k in state_dict_:
+    if k.startswith('module') and not k.startswith('module_list'):
+      state_dict[k[7:]] = state_dict_[k]
+    else:
+      state_dict[k] = state_dict_[k]
+  if load_on_generator:
+    model_state_dict = model.generator.state_dict()
+  else:
+    model_state_dict = model.state_dict()
+
+  # check loaded parameters and created model parameters
+  msg = 'If you see this, your model does not fully load the ' + \
+        'pre-trained weight. Please make sure ' + \
+        'you have correctly specified --arch xxx ' + \
+        'or set the correct --num_classes for your own dataset.'
+  for k in state_dict:
+    if k in model_state_dict:
+      if state_dict[k].shape != model_state_dict[k].shape:
+        print('Skip loading parameter {}, required shape{}, '\
+              'loaded shape{}. {}'.format(
+          k, model_state_dict[k].shape, state_dict[k].shape, msg))
+        state_dict[k] = model_state_dict[k]
+    else:
+      print('Drop parameter {}.'.format(k) + msg)
+  for k in model_state_dict:
+    if not (k in state_dict):
+      print('No param {}.'.format(k) + msg)
+      state_dict[k] = model_state_dict[k]
+  if load_on_generator:
+    model.generator.load_state_dict(state_dict, strict=False)
+  else:
+    model.load_state_dict(state_dict, strict=False)
+
+  # resume optimizer parameters
+  if optimizers is not None and resume:
+    if 'optimizers' in checkpoint:
+      start_epoch = checkpoint['epoch']
+      start_lr = lr
+      for step in lr_step:
+        if start_epoch >= step:
+          start_lr *= 0.1
+      loaded_optimizers = True
+      for optimizer in optimizers.keys():
+        if optimizer in checkpoint['optimizers']:
+          optimizers[optimizer].load_state_dict(checkpoint['optimizers'][optimizer])
+          for param_group in optimizers[optimizer].param_groups:
+            param_group['lr'] = start_lr
+          print('Resumed optimizer `{}` with start lr `{}`'.format(optimizer, start_lr))
+        else:
+          print('optimizer `{}` is not avaialable in checkpoint'.format(optimizer))
+    else:
+      print('No optimizers parameters in checkpoint.')
+  if optimizers is not None:
+    return model, optimizers, start_epoch
+  else:
+    return model
+
+def save_gan_model(path, epoch, model, optimizers):
+  if isinstance(model, torch.nn.DataParallel):
+    state_dict = model.module.state_dict()
+  else:
+    state_dict = model.state_dict()
+  data = {'epoch': epoch,
+          'state_dict': state_dict}
+  data['optimizers'] = {}
+  for optimizer_key, optimizer_value in optimizers.items():
+    data['optimizers'][optimizer_key] = optimizer_value.state_dict()
+  torch.save(data, path)

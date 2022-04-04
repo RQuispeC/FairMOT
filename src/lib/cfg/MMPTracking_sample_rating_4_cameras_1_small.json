@@ -1,0 +1,14 @@
+{
+    "train":
+    {
+        "mot15":"./data/MMPTracking_sample_rating_4_cameras_1_small.train"
+    },
+    "test_emb":
+    {
+        "mot15":"./data/MMPTracking_sample_rating_4_cameras_1_small.test"
+    },
+    "test":
+    {
+        "mot15":"./data/MMPTracking_sample_rating_4_cameras_1_small.test"
+    }
+}

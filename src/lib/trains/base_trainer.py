@@ -22,12 +22,14 @@ class ModleWithLoss(torch.nn.Module):
 
 class BaseTrainer(object):
   def __init__(
-    self, opt, model, optimizer=None):
+    self, opt, model, optimizer=None, logger=None):
     self.opt = opt
     self.optimizer = optimizer
+    self.logger = logger
     self.loss_states, self.loss = self._get_losses(opt)
     self.model_with_loss = ModleWithLoss(model, self.loss)
     self.optimizer.add_param_group({'params': self.loss.parameters()})
+    self.step = 0
 
   def set_device(self, gpus, chunk_sizes, device):
     if len(gpus) > 1:
@@ -60,6 +62,7 @@ class BaseTrainer(object):
     bar = Bar('{}/{}'.format(opt.task, opt.exp_id), max=num_iters)
     end = time.time()
     for iter_id, batch in enumerate(data_loader):
+      self.step += 1
       if iter_id >= num_iters:
         break
       data_time.update(time.time() - end)
@@ -83,6 +86,7 @@ class BaseTrainer(object):
       for l in avg_loss_stats:
         avg_loss_stats[l].update(
           loss_stats[l].mean().item(), batch['input'].size(0))
+        self.logger.scalar_summary('train_inner/loss_{}'.format(l), loss_stats[l].mean().item(), self.step)
         Bar.suffix = Bar.suffix + '|{} {:.4f} '.format(l, avg_loss_stats[l].avg)
       if not opt.hide_data_time:
         Bar.suffix = Bar.suffix + '|Data {dt.val:.3f}s({dt.avg:.3f}s) ' \

@@ -90,8 +90,8 @@ class MotLoss(torch.nn.Module):
 
 
 class MotTrainer(BaseTrainer):
-    def __init__(self, opt, model, optimizer=None):
-        super(MotTrainer, self).__init__(opt, model, optimizer=optimizer)
+    def __init__(self, opt, model, optimizer=None, logger=None):
+        super(MotTrainer, self).__init__(opt, model, optimizer=optimizer, logger=logger)
 
     def _get_losses(self, opt):
         loss_states = ['loss', 'hm_loss', 'wh_loss', 'off_loss', 'id_loss']
