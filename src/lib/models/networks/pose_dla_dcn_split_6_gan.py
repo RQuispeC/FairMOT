@@ -14,6 +14,7 @@ import torch.nn.functional as F
 import torch.utils.model_zoo as model_zoo
 
 from dcn_v2 import DCN
+from .utils import *
 
 BN_MOMENTUM = 0.1
 logger = logging.getLogger(__name__)
@@ -477,23 +478,48 @@ class DLASeg(nn.Module):
 
         self.ida_up = IDAUp(out_channel, channels[self.first_level:self.last_level], 
                             [2 ** i for i in range(self.last_level - self.first_level)])
-        
-        # Add extra layers to have a join representation for detection branch before its subsections (headmap, offset, size head) and reid
+
         self.final_feature_dim = channels[self.first_level]
-        self.joint_detection_layer = nn.Sequential(
-                    nn.Conv2d(self.final_feature_dim, self.final_feature_dim,
-                    kernel_size=1, stride=1, bias=False),
-                    nn.ReLU(inplace=True),
-                    )
-        self.joint_detection_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.joint_reid_layer = nn.Sequential(
-                    nn.Conv2d(self.final_feature_dim, self.final_feature_dim,
-                    kernel_size=1, stride=1, bias=False),
-                    nn.ReLU(inplace=True),
-                    )
-        self.joint_reid_pool = nn.AdaptiveAvgPool2d((1, 1))
-        fill_fc_weights(self.joint_detection_layer)
-        fill_fc_weights(self.joint_reid_layer)
+        # Add extra layers to have a join representation for detection branch before its subsections (headmap, offset, size head) and reid
+        self.attent_shared = SEModule(channels[self.first_level], 8)
+        self.attent_detect = SEModule(channels[self.first_level], 8)
+        self.attent_reid = SEModule(channels[self.first_level], 8)
+
+        fill_fc_weights(self.attent_shared)
+        fill_fc_weights(self.attent_detect)
+        fill_fc_weights(self.attent_reid)
+
+        # extra layers to add BN for each task
+        self.detect_bn = nn.Sequential(
+                  nn.Conv2d(self.final_feature_dim, self.final_feature_dim,
+                    kernel_size=3, padding=1, bias=True),
+                  nn.BatchNorm2d(self.final_feature_dim, momentum=BN_MOMENTUM),
+                  nn.ReLU(inplace=True),
+                  nn.Conv2d(self.final_feature_dim, self.final_feature_dim,
+                    kernel_size=3, padding=1, bias=True),
+                  nn.BatchNorm2d(self.final_feature_dim, momentum=BN_MOMENTUM),
+                  nn.ReLU(inplace=True))
+        self.reid_bn = nn.Sequential(
+                  nn.Conv2d(self.final_feature_dim, self.final_feature_dim,
+                    kernel_size=3, padding=1, bias=True),
+                  nn.BatchNorm2d(self.final_feature_dim, momentum=BN_MOMENTUM),
+                  nn.ReLU(inplace=True),
+                  nn.Conv2d(self.final_feature_dim, self.final_feature_dim,
+                    kernel_size=3, padding=1, bias=True),
+                  nn.BatchNorm2d(self.final_feature_dim, momentum=BN_MOMENTUM),
+                  nn.ReLU(inplace=True))
+        self.shared_bn = nn.Sequential(
+                  nn.Conv2d(self.final_feature_dim, self.final_feature_dim,
+                    kernel_size=3, padding=1, bias=True),
+                  nn.BatchNorm2d(self.final_feature_dim, momentum=BN_MOMENTUM),
+                  nn.ReLU(inplace=True),
+                  nn.Conv2d(self.final_feature_dim, self.final_feature_dim,
+                    kernel_size=3, padding=1, bias=True),
+                  nn.BatchNorm2d(self.final_feature_dim, momentum=BN_MOMENTUM),
+                  nn.ReLU(inplace=True))
+        fill_fc_weights(self.detect_bn)
+        fill_fc_weights(self.reid_bn)
+        fill_fc_weights(self.shared_bn)
 
         self.heads = heads
         for head in self.heads:
@@ -529,9 +555,22 @@ class DLASeg(nn.Module):
             y.append(x[i].clone())
         self.ida_up(y, 0, len(y))
 
-        shared_repr = y[-1]
-        dete_repr = self.joint_detection_layer(y[-1])
-        reid_repr = self.joint_reid_layer(y[-1])
+        shared_atten = self.attent_shared(y[-1], return_attention = True)
+        dete_atten = self.attent_detect(y[-1], return_attention = True)
+        reid_atten = self.attent_reid(y[-1], return_attention = True)
+        
+        splitted_atten = F.softmax(torch.cat((shared_atten, dete_atten, reid_atten), dim=3), dim =3)
+        shared_atten = splitted_atten[:, :, :, 0].unsqueeze(3)
+        dete_atten = splitted_atten[:, :, :, 1].unsqueeze(3)
+        reid_atten = splitted_atten[:, :, :, 2].unsqueeze(3)
+        shared_repr = shared_atten * y[-1]
+        dete_repr = dete_atten * y[-1]
+        reid_repr = reid_atten * y[-1]
+
+        dete_repr = self.detect_bn(dete_repr)
+        reid_repr = self.reid_bn(reid_repr)
+        shared_repr = self.shared_bn(shared_repr)
+
         z = {}
         if 'train' in mode:
             z['shared'] = shared_repr
@@ -607,6 +646,11 @@ class DLASegGan(nn.Module):
             raise ValueError("Invalid network mode '{}'".format(mode))
 
 def get_pose_net(num_layers, heads, head_conv=256, down_ratio=4):
+  """
+  base model using attention layers + softmax to avoid averlap to split f into shared, deid and detection heads
+  + (conv, bn, relu)**2 for reid, detection and shared branches (to have task specific bn)
+  + gan to push shared space to be equal to reid and detect
+  """
   model = DLASegGan('dla{}'.format(num_layers), heads,
                  pretrained=True,
                  down_ratio=down_ratio,

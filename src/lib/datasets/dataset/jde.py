@@ -22,12 +22,16 @@ from utils.utils import xyxy2xywh, generate_anchors, xywh2xyxy, encode_delta
 
 class LoadImages:  # for inference
     def __init__(self, path, img_size=(1088, 608)):
-        if os.path.isdir(path):
+        if isinstance(path, list):
+            self.files= path
+        elif os.path.isdir(path):
             image_format = ['.jpg', '.jpeg', '.png', '.tif']
             self.files = sorted(glob.glob('%s/*.*' % path))
             self.files = list(filter(lambda x: os.path.splitext(x)[1].lower() in image_format, self.files))
         elif os.path.isfile(path):
             self.files = [path]
+        else:
+            raise ValueError("Invalid type of data for Load images: given {}".format(type(path)))
 
         self.nF = len(self.files)  # number of image files
         self.width = img_size[0]

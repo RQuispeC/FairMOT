@@ -9,6 +9,16 @@ import os
 
 from .networks.dlav0 import get_pose_net as get_dlav0
 from .networks.pose_dla_dcn import get_pose_net as get_dla_dcn
+from .networks.pose_dla_dcn_split_1 import get_pose_net as get_dla_dcn_split_1
+from .networks.pose_dla_dcn_split_2 import get_pose_net as get_dla_dcn_split_2
+from .networks.pose_dla_dcn_split_3 import get_pose_net as get_dla_dcn_split_3
+from .networks.pose_dla_dcn_split_4 import get_pose_net as get_dla_dcn_split_4
+from .networks.pose_dla_dcn_split_5 import get_pose_net as get_dla_dcn_split_5
+from .networks.pose_dla_dcn_split_6 import get_pose_net as get_dla_dcn_split_6
+from .networks.pose_dla_dcn_split_6_gan import get_pose_net as get_dla_dcn_split_6_gan
+from .networks.pose_dla_dcn_split_7 import get_pose_net as get_dla_dcn_split_7
+from .networks.pose_dla_dcn_split_8 import get_pose_net as get_dla_dcn_split_8
+from .networks.pose_dla_dcn_split_9 import get_pose_net as get_dla_dcn_split_9
 from .networks.pose_dla_dcn_2 import get_pose_net as get_dla_dcn_2
 from .networks.pose_dla_dcn_2_gan import get_pose_net as get_dla_dcn_2_gan
 from .networks.resnet_dcn import get_pose_net as get_pose_net_dcn
@@ -21,6 +31,16 @@ _model_factory = {
   'dlav0': get_dlav0, # default DLAup
   'dla': get_dla_dcn,
   'dla2': get_dla_dcn_2,
+  'dlasplit1': get_dla_dcn_split_1,
+  'dlasplit2': get_dla_dcn_split_2,
+  'dlasplit3': get_dla_dcn_split_3,
+  'dlasplit4': get_dla_dcn_split_4,
+  'dlasplit5': get_dla_dcn_split_5,
+  'dlasplit6': get_dla_dcn_split_6,
+  'dlasplit6gan': get_dla_dcn_split_6_gan,
+  'dlasplit7': get_dla_dcn_split_7,
+  'dlasplit8': get_dla_dcn_split_8,
+  'dlasplit9': get_dla_dcn_split_9,
   'dla2gan': get_dla_dcn_2_gan,
   'dlaconv': get_dla_conv,
   'resdcn': get_pose_net_dcn,

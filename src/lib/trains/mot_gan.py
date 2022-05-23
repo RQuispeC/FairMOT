@@ -132,6 +132,32 @@ class MotTrainerGan(BaseTrainer):
         self.loss_states = ['loss_generator', 'hm_loss', 'wh_loss', 'off_loss', 'id_loss', 'disc_reid', 'disc_detect']
         self.step = 0
 
+    def set_device(self, gpus, chunk_sizes, device):
+        if len(gpus) > 1:
+            self.model = DataParallel(
+                self.model, device_ids=gpus, 
+                chunk_sizes=chunk_sizes).to(device)
+            self.loss_generator = DataParallel(
+                self.loss_generator, device_ids=gpus, 
+                chunk_sizes=chunk_sizes).to(device)
+            self.loss_discriminator_reid = DataParallel(
+                self.loss_discriminator_reid, device_ids=gpus, 
+                chunk_sizes=chunk_sizes).to(device)
+            self.loss_discriminator_detect = DataParallel(
+                self.loss_discriminator_detect, device_ids=gpus, 
+                chunk_sizes=chunk_sizes).to(device)
+        else:
+            self.model = self.model.to(device)
+            self.loss_generator = self.loss_generator.to(device)
+            self.loss_discriminator_reid = self.loss_discriminator_reid.to(device)
+            self.loss_discriminator_detect = self.loss_discriminator_detect.to(device)
+        
+        for k in self.optimizers.keys():
+            for state in self.optimizers[k].state.values():
+                for k, v in state.items():
+                    if isinstance(v, torch.Tensor):
+                        state[k] = v.to(device=device, non_blocking=True)
+
     def save_result(self, output, batch, results):
         reg = output['reg'] if self.opt.reg_offset else None
         dets = mot_decode(

@@ -14,6 +14,7 @@ import torch.nn.functional as F
 import torch.utils.model_zoo as model_zoo
 
 from dcn_v2 import DCN
+from .utils import *
 
 BN_MOMENTUM = 0.1
 logger = logging.getLogger(__name__)
@@ -26,31 +27,6 @@ def conv3x3(in_planes, out_planes, stride=1):
     "3x3 convolution with padding"
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
                      padding=1, bias=False)
-
-class Conv2d(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, bn=False, activation = 'leakyrelu', dropout = False):
-        super(Conv2d, self).__init__()
-        padding = int((kernel_size - 1) / 2)
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding=padding)
-        self.bn = nn.BatchNorm2d(out_channels, eps=0.001, momentum=0, affine=True) if bn else None
-        self.dropout = nn.Dropout(p=0.5) if dropout else None
-        if activation == 'leakyrelu':
-            self.activation = nn.LeakyReLU(negative_slope = 0.2)
-        elif activation == 'relu':
-            self.activation = nn.ReLU()
-        elif activation == 'tanh':
-            self.activation = nn.Tanh()
-        else:
-            raise ValueError('Not a valid activation, received {}'.format(activation))
-
-    def forward(self, x):
-        x = self.conv(x)
-        if self.bn is not None:
-            x = self.bn(x)
-        if self.dropout is not None:
-            x = self.dropout(x)
-        x = self.activation(x)
-        return x
 
 
 class BasicBlock(nn.Module):
@@ -459,6 +435,7 @@ class Interpolate(nn.Module):
         x = F.interpolate(x, scale_factor=self.scale, mode=self.mode, align_corners=False)
         return x
 
+
 class DLASeg(nn.Module):
     def __init__(self, base_name, heads, pretrained, down_ratio, final_kernel,
                  last_level, head_conv, out_channel=0):
@@ -479,28 +456,46 @@ class DLASeg(nn.Module):
                             [2 ** i for i in range(self.last_level - self.first_level)])
         
         # Add extra layers to have a join representation for detection branch before its subsections (headmap, offset, size head) and reid
-        self.final_feature_dim = channels[self.first_level]
-        self.joint_detection_layer = nn.Sequential(
-                    nn.Conv2d(self.final_feature_dim, self.final_feature_dim,
-                    kernel_size=1, stride=1, bias=False),
-                    nn.ReLU(inplace=True),
-                    )
-        self.joint_detection_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.joint_reid_layer = nn.Sequential(
-                    nn.Conv2d(self.final_feature_dim, self.final_feature_dim,
-                    kernel_size=1, stride=1, bias=False),
-                    nn.ReLU(inplace=True),
-                    )
-        self.joint_reid_pool = nn.AdaptiveAvgPool2d((1, 1))
-        fill_fc_weights(self.joint_detection_layer)
-        fill_fc_weights(self.joint_reid_layer)
+        self.attent_shared = SEModule(channels[self.first_level], 8)
+        self.attent_detect = SEModule(channels[self.first_level], 8)
+        self.attent_reid = SEModule(channels[self.first_level], 8)
+
+        fill_fc_weights(self.attent_shared)
+        fill_fc_weights(self.attent_detect)
+        fill_fc_weights(self.attent_reid)
+
+        # extra layers to add BN for each task
+        self.detect_bn = nn.Sequential(
+                  nn.Conv2d(channels[self.first_level], channels[self.first_level],
+                    kernel_size=3, padding=1, bias=True),
+                  nn.ReLU(inplace=True),
+                  nn.Conv2d(channels[self.first_level], channels[self.first_level],
+                    kernel_size=3, padding=1, bias=True),
+                  nn.ReLU(inplace=True))
+        self.reid_bn = nn.Sequential(
+                  nn.Conv2d(channels[self.first_level], channels[self.first_level],
+                    kernel_size=3, padding=1, bias=True),
+                  nn.ReLU(inplace=True),
+                  nn.Conv2d(channels[self.first_level], channels[self.first_level],
+                    kernel_size=3, padding=1, bias=True),
+                  nn.ReLU(inplace=True))
+        self.shared_bn = nn.Sequential(
+                  nn.Conv2d(channels[self.first_level], channels[self.first_level],
+                    kernel_size=3, padding=1, bias=True),
+                  nn.ReLU(inplace=True),
+                  nn.Conv2d(channels[self.first_level], channels[self.first_level],
+                    kernel_size=3, padding=1, bias=True),
+                  nn.ReLU(inplace=True))
+        fill_fc_weights(self.detect_bn)
+        fill_fc_weights(self.reid_bn)
+        fill_fc_weights(self.shared_bn)
 
         self.heads = heads
         for head in self.heads:
             classes = self.heads[head]
             if head_conv > 0:
               fc = nn.Sequential(
-                  nn.Conv2d(self.final_feature_dim, head_conv,
+                  nn.Conv2d(channels[self.first_level], head_conv,
                     kernel_size=3, padding=1, bias=True),
                   nn.ReLU(inplace=True),
                   nn.Conv2d(head_conv, classes, 
@@ -511,7 +506,7 @@ class DLASeg(nn.Module):
               else:
                 fill_fc_weights(fc)
             else:
-              fc = nn.Conv2d(self.final_feature_dim, classes, 
+              fc = nn.Conv2d(channels[self.first_level], classes, 
                   kernel_size=final_kernel, stride=1, 
                   padding=final_kernel // 2, bias=True)
               if 'hm' in head:
@@ -520,7 +515,7 @@ class DLASeg(nn.Module):
                 fill_fc_weights(fc)
             self.__setattr__(head, fc)
 
-    def forward(self, x, mode = 'train_generator'):
+    def forward(self, x):
         x = self.base(x)
         x = self.dla_up(x)
 
@@ -529,85 +524,40 @@ class DLASeg(nn.Module):
             y.append(x[i].clone())
         self.ida_up(y, 0, len(y))
 
-        shared_repr = y[-1]
-        dete_repr = self.joint_detection_layer(y[-1])
-        reid_repr = self.joint_reid_layer(y[-1])
-        z = {}
-        if 'train' in mode:
-            z['shared'] = shared_repr
-            z['reid'] = reid_repr
-            z['detect'] = dete_repr
-            if mode == 'train_discriminator':
-                return z
+        shared_atten = self.attent_shared(y[-1], return_attention = True)
+        dete_atten = self.attent_detect(y[-1], return_attention = True)
+        reid_atten = self.attent_reid(y[-1], return_attention = True)
+        
+        splitted_atten = F.softmax(torch.cat((shared_atten, dete_atten, reid_atten), dim=3), dim =3)
+        shared_atten = splitted_atten[:, :, :, 0].unsqueeze(3)
+        dete_atten = splitted_atten[:, :, :, 1].unsqueeze(3)
+        reid_atten = splitted_atten[:, :, :, 2].unsqueeze(3)
+        shared_repr = shared_atten * y[-1]
+        dete_repr = dete_atten * y[-1]
+        reid_repr = reid_atten * y[-1]
+
+        dete_repr = self.detect_bn(dete_repr)
+        reid_repr = self.reid_bn(reid_repr)
+        shared_repr = self.shared_bn(shared_repr)
+
         dete_repr_mot = dete_repr + shared_repr
         reid_repr_mot = reid_repr + shared_repr
+        z = {}
         for head in self.heads:
             if head in self.detection_heads:
                 input_feature = dete_repr_mot
             else:
                 input_feature = reid_repr_mot
             z[head] = self.__getattr__(head)(input_feature)
-        return z
-
-class Discriminator(nn.Module):
-    def __init__(self, input_channel_dim):
-        super(Discriminator, self).__init__()
-        input_channel_dim
-        self.f_1 = Conv2d(input_channel_dim, input_channel_dim//2, 3, stride = 1, bn = True, activation = 'leakyrelu', dropout=False)
-        self.f_2 = Conv2d(input_channel_dim//2, input_channel_dim//4, 3, stride = 1, bn = True, activation = 'leakyrelu', dropout=False)
-        self.f_3 = Conv2d(input_channel_dim//4, input_channel_dim//8, 3, stride = 1, bn = True, activation = 'leakyrelu', dropout=False)
-        self.f_3 = Conv2d(input_channel_dim//4, 1, 3, stride = 1, bn = True, activation = 'leakyrelu', dropout=False)
-
-    def forward(self, x):
-        x = self.f_1(x)
-        x = self.f_2(x)
-        x = self.f_3(x)
-
-        logits = F.avg_pool2d(x, x.size()[2:])
-        logits = logits.view(-1)
-        y = F.tanh(logits)
-        return logits, y
-
-class DLASegGan(nn.Module):
-    def __init__(self, base_name, heads, pretrained, down_ratio, final_kernel,
-                 last_level, head_conv):
-        super(DLASegGan, self).__init__()
-        self.generator = DLASeg(base_name, 
-                                    heads=heads,
-                                    pretrained=pretrained,
-                                    down_ratio=down_ratio,
-                                    final_kernel=final_kernel,
-                                    last_level=last_level,
-                                    head_conv=head_conv
-                                    )
-        self.discr_reid = Discriminator(self.generator.final_feature_dim)
-        self.discr_detect = Discriminator(self.generator.final_feature_dim)
-
-    def forward(self, x, mode='eval'):
-        x = self.generator(x, mode)
-        if mode == 'eval':
-            return [x]
-        elif mode == 'train_generator':
-            d_r_fake_reid, _ = self.discr_reid(x['shared'])
-            d_d_fake_detect, _ = self.discr_detect(x['shared'])
-            x['d_r_fake_reid_logits'] = d_r_fake_reid
-            x['d_d_fake_detect_logits'] = d_d_fake_detect
-            return x
-        elif mode == 'train_discriminator':
-            d_r_real_reid, _ = self.discr_reid(x['reid'])
-            d_r_real_shared, _ = self.discr_reid(x['shared'])
-            d_d_real_detect, _ = self.discr_detect(x['detect'])
-            d_d_real_shared, _ = self.discr_detect(x['shared'])
-            x['d_r_real_reid_logits'] = d_r_real_reid
-            x['d_r_real_shared_logits'] = d_r_real_shared
-            x['d_d_real_detect_logits'] = d_d_real_detect
-            x['d_d_real_shared_logits'] = d_d_real_shared
-            return x
-        else:
-            raise ValueError("Invalid network mode '{}'".format(mode))
+        return [z]
+    
 
 def get_pose_net(num_layers, heads, head_conv=256, down_ratio=4):
-  model = DLASegGan('dla{}'.format(num_layers), heads,
+  """
+  base model using attention layers + softmax to avoid averlap to split f into shared, deid and detection heads
+  + (conv, relu)**2 for reid, detection and shared branches (for ablation analysis of split_6 and effects of bn)
+  """
+  model = DLASeg('dla{}'.format(num_layers), heads,
                  pretrained=True,
                  down_ratio=down_ratio,
                  final_kernel=1,
