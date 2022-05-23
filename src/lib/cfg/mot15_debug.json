@@ -5,10 +5,10 @@
     },
     "test_emb":
     {
-        "mot15":"./data/mot15_debug.train"
+        "mot15":"./data/mot15_debug.test"
     },
     "test":
     {
-        "mot15":"./data/mot15_debug.train"
+        "mot15":"./data/mot15_debug.test"
     }
 }

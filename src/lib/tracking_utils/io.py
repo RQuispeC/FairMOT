@@ -33,17 +33,18 @@ def write_results(filename, results_dict: Dict, data_type: str):
     logger.info('Save results to {}'.format(filename))
 
 
-def read_results(filename, data_type: str, is_gt=False, is_ignore=False):
+def read_results(filename, data_type: str, is_gt=False, is_ignore=False, is_unique_file=False):
+    #is_unique_file is set to true when the ground truth for a sequence is already unified and not created by the evaluation script
     if data_type in ('mot', 'lab'):
         read_fun = read_mot_results
     else:
         raise ValueError('Unknown data type: {}'.format(data_type))
 
-    return read_fun(filename, is_gt, is_ignore)
+    return read_fun(filename, is_gt, is_ignore, is_unique_file)
 
 
 """
-labels={'ped', ...			% 1
+labels={'ped', ...		% 1
 'person_on_vhcl', ...	% 2
 'car', ...				% 3
 'bicycle', ...			% 4
@@ -52,15 +53,15 @@ labels={'ped', ...			% 1
 'static_person', ...	% 7
 'distractor', ...		% 8
 'occluder', ...			% 9
-'occluder_on_grnd', ...		%10
-'occluder_full', ...		% 11
+'occluder_on_grnd', ...	% 10
+'occluder_full', ...	% 11
 'reflection', ...		% 12
-'crowd' ...			% 13
+'crowd' ...				% 13
 };
 """
 
 
-def read_mot_results(filename, is_gt, is_ignore):
+def read_mot_results(filename, is_gt, is_ignore, is_unique_file):
     valid_labels = {1}
     ignore_labels = {2, 7, 8, 12}
     results_dict = dict()
@@ -78,28 +79,28 @@ def read_mot_results(filename, is_gt, is_ignore):
                 box_size = float(linelist[4]) * float(linelist[5])
 
                 if is_gt:
-                    if 'MOT16-' in filename or 'MOT17-' in filename:
+                    if is_unique_file and ('MOT16-' in filename or 'MOT17-' in filename or 'MOT20-' in filename or 'MMPTracking' in filename):
                         label = int(float(linelist[7]))
                         mark = int(float(linelist[6]))
                         if mark == 0 or label not in valid_labels:
+                            print("ignored")
                             continue
                     score = 1
                 elif is_ignore:
-                    if 'MOT16-' in filename or 'MOT17-' in filename:
+                    if is_unique_file and ('MOT16-' in filename or 'MOT17-' in filename or 'MOT20-' in filename or 'MMPTracking' in filename):
                         label = int(float(linelist[7]))
                         vis_ratio = float(linelist[8])
                         if label not in ignore_labels and vis_ratio >= 0:
+                            continue
+                    elif is_unique_file and 'MOT15' in filename:
+                        label = int(float(linelist[6]))
+                        if label not in ignore_labels:
                             continue
                     else:
                         continue
                     score = 1
                 else:
                     score = float(linelist[6])
-
-                #if box_size > 7000:
-                #if box_size <= 7000 or box_size >= 15000:
-                #if box_size < 15000:
-                    #continue
 
                 tlwh = tuple(map(float, linelist[2:6]))
                 target_id = int(linelist[1])

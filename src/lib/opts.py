@@ -101,6 +101,7 @@ class opts(object):
     self.parser.add_argument('--keep_res', action='store_true',
                              help='keep the original resolution'
                                   ' during validation.')
+
     # tracking
     self.parser.add_argument('--test_mot16', default=False, help='test mot16')
     self.parser.add_argument('--val_mot15', default=False, help='val mot15')
@@ -121,7 +122,13 @@ class opts(object):
                              default='../videos/MOT16-03.mp4',
                              help='path to the input video')
     self.parser.add_argument('--output-format', type=str, default='video', help='video or text')
-    self.parser.add_argument('--output-root', type=str, default='../demos', help='expected output root path')
+
+    self.parser.add_argument('--show_image', default=False, help='show images on images during tracking evaluation')
+    self.parser.add_argument('--save_images', default=False, help='plot detection on images during tracking evaluation')
+    self.parser.add_argument('--save_videos', default=False, help='save videos on images during tracking evaluation')
+    self.parser.add_argument('--frame_rate', type=int, default=30, help='frame rate video was original recorded')
+
+  
 
     # mot
     self.parser.add_argument('--data_root_dir', type=str, default='/home/zyf/dataset', help='root path for all data')
@@ -162,6 +169,8 @@ class opts(object):
                              help='category specific bounding box size.')
     self.parser.add_argument('--not_reg_offset', action='store_true',
                              help='not regress local offset.')
+    
+    
 
   def parse(self, args=''):
     if args == '':

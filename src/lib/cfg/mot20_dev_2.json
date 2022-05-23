@@ -1,0 +1,15 @@
+{
+    "root":"/home/zyf/dataset",
+    "train":
+    {
+        "mot20":"./data/mot20_dev_2.train"
+    },
+    "test_emb":
+    {
+        "mot20":"./data/mot20_dev_2.test"
+    },
+    "test":
+    {
+        "mot20":"./data/mot20_dev_2.test"
+    }
+}

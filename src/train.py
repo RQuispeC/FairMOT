@@ -20,8 +20,8 @@ from trains.train_factory import train_factory
 
 
 def main(opt):
-    torch.manual_seed(opt.seed)
     torch.backends.cudnn.benchmark = not opt.not_cuda_benchmark and not opt.test
+    torch.manual_seed(opt.seed)
 
     print('Setting up data...')
     Dataset = get_dataset(opt.dataset, opt.task)
@@ -91,5 +91,5 @@ def main(opt):
 
 
 if __name__ == '__main__':
-    opt = opts().parse()
+    opt = opts().parse()    
     main(opt)

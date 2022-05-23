@@ -9,10 +9,11 @@ from tracking_utils.io import read_results, unzip_objs
 
 class Evaluator(object):
 
-    def __init__(self, data_root, seq_name, data_type):
+    def __init__(self, data_root, seq_name, data_type, gt_filename=None):
         self.data_root = data_root
         self.seq_name = seq_name
         self.data_type = data_type
+        self.gt_filename = gt_filename
 
         self.load_annotations()
         self.reset_accumulator()
@@ -20,9 +21,10 @@ class Evaluator(object):
     def load_annotations(self):
         assert self.data_type == 'mot'
 
-        gt_filename = os.path.join(self.data_root, self.seq_name, 'gt', 'gt.txt')
-        self.gt_frame_dict = read_results(gt_filename, self.data_type, is_gt=True)
-        self.gt_ignore_frame_dict = read_results(gt_filename, self.data_type, is_ignore=True)
+        if not self.gt_filename:
+            self.gt_filename = os.path.join(self.data_root, self.seq_name, 'gt', 'gt.txt')
+        self.gt_frame_dict = read_results(self.gt_filename, self.data_type, is_gt=True)
+        self.gt_ignore_frame_dict = read_results(self.gt_filename, self.data_type, is_ignore=True)
 
     def reset_accumulator(self):
         self.acc = mm.MOTAccumulator(auto_id=True)

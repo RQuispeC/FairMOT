@@ -81,7 +81,7 @@ def main(opt):
                        epoch, model, optimizers)
             lr = opt.lr * (0.1 ** (opt.lr_step.index(epoch) + 1))
             print('Drop LR to', lr)
-            for optimizer in optimizers:
+            for optimizer in optimizers.values():
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = lr
         if epoch % 5 == 0 or epoch >= 25:
